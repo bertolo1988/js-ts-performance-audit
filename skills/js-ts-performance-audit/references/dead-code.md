@@ -1,15 +1,12 @@
-# Finding Dead Code with Knip and tsc
+# Finding Dead Code with Knip
 
-Read this file before running either tool. Everything they report is a candidate, not a verdict: confirm each one against dynamic imports, framework entry points, and tests before removing it.
+Read this file before running Knip. Report only unused files and dependencies: they are bundled or loaded. Unused exports, types, and locals have no runtime cost, so leave them out of the report. Everything Knip reports is a candidate, not a verdict: confirm each one against dynamic imports, framework entry points, and tests before removing it.
 
 ## Running the tools
 
 - **Use the project's own copy.** Run its `knip` script when `package.json` has one, or `npx --no-install knip`. `--no-install` makes `npx` fail instead of downloading a package.
 - **Ask before fetching Knip into a project that does not have it.** Plain `npx knip` downloads and runs the latest release inside the audited repository.
-- **Never run a bare `npx tsc` in a project without TypeScript installed.** `npx` then fetches an unrelated, deprecated package named `tsc`. Use `npx --no-install tsc --noEmit --noUnusedLocals --noUnusedParameters`.
 - **Never run `knip --fix` unless the user asks.** It edits and deletes files.
-
-`tsc` reports unused locals and parameters only. Unused exports, files, and dependencies need Knip.
 
 ## Configuring Knip before trusting its output
 
@@ -20,7 +17,6 @@ An unconfigured run reports many false positives. Fix the configuration before d
 - **Enable or disable plugins explicitly** when a tool's config file is reported as unused, for example `{ "vite": true }`.
 - **Declare path aliases** under `paths`, using the same semantics as `tsconfig.json`.
 - **List packages named like Node built-ins** under `ignoreDependencies`.
-- **Consider `ignoreExportsUsedInFile`** when many reported exports are types used only inside their own file.
 
 For entry points and monorepo workspaces, follow the documentation at knip.dev. Knip also publishes an MCP server, `@knip/mcp`, for agents that can use one.
 
