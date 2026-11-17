@@ -10,7 +10,7 @@ set -euo pipefail
 
 SKILL="js-ts-performance-audit"
 REF="${SKILL_REF:-main}"
-URL="https://raw.githubusercontent.com/bertolo1988/${SKILL}/${REF}/skills/${SKILL}/SKILL.md"
+URL="https://codeload.github.com/bertolo1988/${SKILL}/tar.gz/${REF}"
 
 dir_for() {
   case "$1" in
@@ -24,13 +24,17 @@ dir_for() {
 targets=("$@")
 [ ${#targets[@]} -eq 0 ] && targets=(claude codex opencode)
 
-tmp="$(mktemp)"
-trap 'rm -f "$tmp"' EXIT
-curl -fsSL "$URL" -o "$tmp"
+# Download the repository once and take the whole skill directory from it,
+# so SKILL.md and its reference files are installed together.
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+curl -fsSL "$URL" | tar -xz -C "$tmp" --strip-components=1
+src="$tmp/skills/$SKILL"
+[ -f "$src/SKILL.md" ] || { echo "No skills/$SKILL/SKILL.md found at ref '$REF'" >&2; exit 1; }
 
 for t in "${targets[@]}"; do
   base="$(dir_for "$t")" || { echo "Unknown target: $t (use claude, codex, opencode)" >&2; exit 1; }
   mkdir -p "$base/$SKILL"
-  install -m 644 "$tmp" "$base/$SKILL/SKILL.md"
-  echo "Installed $SKILL for $t -> $base/$SKILL/SKILL.md"
+  cp -R "$src/." "$base/$SKILL/"
+  echo "Installed $SKILL for $t -> $base/$SKILL/"
 done

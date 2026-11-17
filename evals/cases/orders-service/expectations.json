@@ -1,0 +1,133 @@
+{
+  "must_find": [
+    {
+      "id": "n-plus-one-items",
+      "why": "listOrders runs db.items.findMany once per order",
+      "near": [
+        "items\\.findMany|order\\.items",
+        "N\\+1|per order|per-order|one query|single query|batch|IN \\(|eager|\\bjoin\\b"
+      ]
+    },
+    {
+      "id": "sync-crypto-in-handler",
+      "why": "verifyApiKey calls pbkdf2Sync on every request",
+      "near": [
+        "pbkdf2Sync|verifyApiKey",
+        "event loop|block|synchronous|async|worker"
+      ]
+    },
+    {
+      "id": "spread-in-reduce",
+      "why": "totalsByCustomer copies the accumulator on every step",
+      "near": [
+        "totalsByCustomer|\\.\\.\\.acc",
+        "O\\(n\\^?2\\)|O\\(n\u00b2\\)|quadratic|cop(y|ies) |every (step|iteration)|each (step|iteration)"
+      ]
+    },
+    {
+      "id": "includes-in-filter",
+      "why": "vipOrders scans vipCustomerIds for every order",
+      "near": [
+        "vipOrders|vipCustomerIds",
+        "\\bSet\\b"
+      ]
+    },
+    {
+      "id": "unbounded-promise-all",
+      "why": "exportOrders starts one request per order id with no cap",
+      "near": [
+        "exportOrders|orderIds",
+        "concurren|unbounded|p-map|p-limit|chunk|batch|limit"
+      ]
+    }
+  ],
+  "banned_claims": [
+    {
+      "id": "cold-path-flagged",
+      "why": "loadConfig runs once at startup, so its readFileSync, forEach and spread are not findings",
+      "line_all": [
+        "loadConfig|SUPPORTED_FLAGS"
+      ],
+      "line_any": [
+        "replace|switch to|should|avoid|blocks|rewrite|\\bHigh\\b|\\bMedium\\b"
+      ],
+      "line_none": [
+        "fine|cold|startup|start-up|once|no change|not flag|acceptable|leave|skip|correct"
+      ]
+    },
+    {
+      "id": "structuredclone-as-speedup",
+      "why": "structuredClone measured slower than a JSON round-trip, so recommending it here is not a performance fix",
+      "line_all": [
+        "structuredClone"
+      ],
+      "line_any": [
+        "faster|quicker|more efficient|cheaper|better perform|speed",
+        "replace|instead of|switch|swap|prefer",
+        "return structuredClone|=> structuredClone"
+      ],
+      "line_none": [
+        "slower|not faster|no faster|not a speed|never as a speed|correctness|not for speed|do not|don't|not a fix|no gain"
+      ]
+    },
+    {
+      "id": "foreach-as-speed-problem",
+      "why": "forEach with an inline callback measured about the same as for...of",
+      "line_all": [
+        "forEach"
+      ],
+      "line_any": [
+        "slow|faster|overhead|closure|allocat|\\bgain\\b|prefer `?for"
+      ],
+      "line_none": [
+        "\\bnot\\b|\\bno\\b|same|don't|do not|fine|cold|startup|leave"
+      ]
+    },
+    {
+      "id": "caches-credentials",
+      "why": "API key checks and account lookups are permission data, which must be read live, so they are not memoization candidates",
+      "line_all": [
+        "cach"
+      ],
+      "line_any": [
+        "verif|findByKeyId|account lookup|api key"
+      ],
+      "line_none": [
+        "do not|don't|\\bnot\\b|excluded|must be read live|must fail|whether .* already caches"
+      ]
+    }
+  ],
+  "format": [
+    {
+      "id": "evidence-label",
+      "why": "each finding says whether it was measured",
+      "all": [
+        "static suspicion|\\bmeasured\\b"
+      ]
+    },
+    {
+      "id": "tiers",
+      "why": "findings are tiered",
+      "all": [
+        "\\bHigh\\b",
+        "\\bMedium\\b|\\bLow\\b"
+      ]
+    },
+    {
+      "id": "coverage-section",
+      "why": "the report says what was and was not examined",
+      "all": [
+        "^#+ .*coverage|^\\d+\\. \\**coverage|^\\**coverage\\**"
+      ]
+    },
+    {
+      "id": "memoization-needs-confirmation",
+      "why": "caching fetchRate is raised as a question, with lru-cache, not applied or prescribed",
+      "all": [
+        "fetchRate|exchange rate|\\brate\\b",
+        "lru-cache",
+        "confirm|approve|which candidates|would you like|do you want|want (me|it)|your (approval|call|decision)"
+      ]
+    }
+  ]
+}

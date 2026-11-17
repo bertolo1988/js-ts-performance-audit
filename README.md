@@ -2,8 +2,6 @@
 
 An agent skill that audits existing JavaScript and TypeScript projects for runtime performance, memory allocations, caching, and dead code. Use it when reviewing, optimizing, refactoring, or auditing a JS/TS codebase, repository, or module to reduce allocations, replace O(n^2) scans with `Map`/`Set`, suggest bounded memoization, prune unnecessary exports, and remove dead code.
 
-> **Status:** work in progress. The skill's instructions are not written yet; `SKILL.md` currently contains only its metadata.
-
 ## Install
 
 Installs the skill for Claude Code, Codex, and OpenCode:
@@ -35,8 +33,14 @@ Environment variables read by the installer:
 
 ## Repository layout
 
-- `skills/js-ts-performance-audit/SKILL.md`: the skill itself.
-- `install.sh`: the installer.
+- `skills/js-ts-performance-audit/SKILL.md`: the skill itself: audit workflow, optimization rules, and report format.
+- `skills/js-ts-performance-audit/references/`: files the skill reads only when they apply.
+  - `node-services.md`: event-loop blocking and data-access checks for Node servers and workers.
+  - `hot-path-rules.md`: micro-rules for functions a profile shows are hot, each with its measured gain.
+  - `verifying.md`: how to measure a change, and the profiling commands to use.
+  - `dead-code.md`: running and configuring Knip and `tsc`.
+- `evals/`: trigger and quality tests for the skill. See [evals/README.md](evals/README.md).
+- `install.sh`: the installer. It copies the whole skill directory.
 
 ## License
 
