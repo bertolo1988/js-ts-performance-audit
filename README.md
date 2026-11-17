@@ -33,7 +33,7 @@ Environment variables read by the installer:
 
 ## Examples
 
-Each example shows code the skill flags and the fix it proposes. Most come from the seeded [`orders-service`](evals/cases/orders-service/src/orders.ts) eval fixture. Gains are described by complexity, or by the measurements recorded in the skill's [reference files](skills/js-ts-performance-audit/references/). Re-measure on your own workload before relying on a number.
+Each example shows code the skill flags and the fix it proposes. Most come from the seeded [`orders-service`](evals/cases/orders-service/src/orders.ts) eval fixture. Gains are described by the work they remove, not by timings: a change that removes work at no risk is reported however small the gain looks on today's data.
 
 ### Query per item (N+1)
 
@@ -216,26 +216,26 @@ const rate = (await rates.fetch(order.currency))!;
 
 ### What a report looks like
 
-Findings are grouped into `High`, `Medium`, and `Low`, and each one carries its evidence. This excerpt is illustrative:
+Findings go in one table, ranked by impact and then by risk, so the biggest gain for the least risk comes first. Each row then gets two sentences at most and a trimmed before/after snippet. This excerpt is illustrative:
 
 ```md
 ## Findings
 
-### High: one query per order (N+1)
+| # | Impact | Risk   | Where                 | Problem → fix                                            |
+| - | ------ | ------ | --------------------- | -------------------------------------------------------- |
+| 1 | High   | None   | `src/orders.ts:50-53` | `{ ...acc }` per order, O(n^2) → mutate a local, O(n)     |
+| 2 | High   | None   | `src/orders.ts:57`    | `includes()` per order, O(n * m) → `Set`, O(n + m)        |
+| 3 | High   | Low    | `src/orders.ts:35-37` | one query per order, N + 1 → 2 queries with `IN (...)`    |
+| 4 | High   | Medium | `src/orders.ts:74-76` | unbounded `Promise.all` → `p-map` with `concurrency: 10`  |
 
-`src/orders.ts:35-37`
+### 4. Unbounded `Promise.all`
 
-`listOrders` runs `db.items.findMany` once per order. The cost grows with the
-number of orders and repeats on every request. Batch it with `WHERE orderId IN (...)`.
-
-- **Evidence:** `static suspicion` (nothing was run)
-- **Needs confirmation:** typical number of orders per customer
-
-(before and after snippets)
+`orderIds` comes from the request body, so one call can open thousands of sockets.
+Needs confirmation: how many requests the warehouse service accepts at once.
 
 ## Coverage
 
-Examined: `listOrders`, `totalsByCustomer`, `vipOrders`, `exportOrders`.
+Examined: `listOrders`, `totalsByCustomer`, `vipOrders`, `exportOrders`, `loadConfig` (startup only, fine).
 Not examined: `db` and `fetchRate`, which are imported but not in `src/`.
 ```
 
@@ -244,8 +244,8 @@ Not examined: `db` and `fetchRate`, which are imported but not in `src/`.
 - `skills/js-ts-performance-audit/SKILL.md`: the skill itself: audit workflow, optimization rules, and report format.
 - `skills/js-ts-performance-audit/references/`: files the skill reads only when they apply.
   - `node-services.md`: event-loop blocking and data-access checks for Node servers and workers.
-  - `hot-path-rules.md`: micro-rules for functions a profile shows are hot, each with its measured gain.
-  - `verifying.md`: how to measure a change, and the profiling commands to use.
+  - `hot-path-rules.md`: constant-factor rules for code that runs per item or per request, each with its risk and measured gain.
+  - `verifying.md`: profiling and benchmarking commands, for when you ask for timings.
   - `dead-code.md`: running and configuring Knip.
 - `evals/`: trigger and quality tests for the skill. See [evals/README.md](evals/README.md).
 - `install.sh`: the installer. It copies the whole skill directory.

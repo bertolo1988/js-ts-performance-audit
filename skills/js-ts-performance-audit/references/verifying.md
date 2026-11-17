@@ -1,6 +1,6 @@
 # Verifying Findings
 
-Use this file only when you can run code. Every command below ships with Node; none adds a dependency to the audited project.
+Use this file only when the user asks for timings or a profile, or when nothing in the code shows where time goes. A finding never needs a measurement to be reported or kept. Every command below ships with Node; none adds a dependency to the audited project.
 
 ## Measuring a change
 
@@ -9,7 +9,7 @@ Use this file only when you can run code. Every command below ships with Node; n
 3. **Warm up before timing steady state.** Run the workload until timings stop falling, then measure. Measure cold start separately, as the wall time of a fresh process.
 4. **Consume every result.** Add each result into a variable that is printed at the end. Work whose result is unused can be removed by the engine, which makes the benchmark report a speed the real code never reaches.
 5. **Compare two versions in fresh processes, in alternating order** (A, B, B, A). Running both in one process lets the first one's warm-up and garbage affect the second.
-6. **Apply the keep-or-revert rule** from step 6 of the Audit Workflow in `SKILL.md`.
+6. **Report what was measured**, and revert a change only when its behaviour differs or it measured slower than the noise.
 
 ## Which tool answers which question
 

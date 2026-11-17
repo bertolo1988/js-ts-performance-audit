@@ -44,7 +44,7 @@ The grader prints three scores:
 | --- | --- |
 | `found` | Seeded problems the report identified. |
 | `banned claims` | Decoys the report flagged, or performance claims that measurement contradicts. Lower is better. |
-| `format` | Report elements the skill requires: evidence labels, tiers, a coverage section, and memoization raised as a question. A run without the skill is expected to score low here. |
+| `format` | Report elements the skill requires: one findings table with impact and risk columns, tiers, a coverage section, and memoization raised as a question. A run without the skill is expected to score low here. |
 
 The grader uses regular expressions only, so it is deterministic and it is approximate. It cannot tell a claim from a quotation of one. It prints every line that counted as a banned claim: read each of them before trusting the number.
 

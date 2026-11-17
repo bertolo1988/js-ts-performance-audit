@@ -99,10 +99,11 @@
   ],
   "format": [
     {
-      "id": "evidence-label",
-      "why": "each finding says whether it was measured",
+      "id": "ranked-table",
+      "why": "findings are in one table with impact and risk columns",
       "all": [
-        "static suspicion|\\bmeasured\\b"
+        "^\\|.*\\bImpact\\b.*\\bRisk\\b",
+        "\\|\\s*`?(None|Low|Medium)`?\\s*\\|"
       ]
     },
     {
