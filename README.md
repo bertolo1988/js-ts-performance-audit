@@ -4,13 +4,13 @@ An agent skill that audits existing JavaScript and TypeScript projects for runti
 
 ## Install
 
-Installs the skill for Claude Code, Codex, and OpenCode:
+Installs the skill for each of Claude Code, Codex, and OpenCode whose config folder already exists (`~/.claude`, `~/.codex`, `~/.config/opencode`). Tools without a config folder are skipped:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/bertolo1988/js-ts-performance-audit/main/install.sh | bash
 ```
 
-To install for specific tools only, pass them as arguments (`claude`, `codex`, `opencode`):
+To install for specific tools only, pass them as arguments (`claude`, `codex`, `opencode`). Named tools are installed even if their config folder does not exist yet:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/bertolo1988/js-ts-performance-audit/main/install.sh | bash -s -- claude codex
@@ -248,7 +248,7 @@ Not examined: `db` and `fetchRate`, which are imported but not in `src/`.
   - `verifying.md`: profiling and benchmarking commands, for when you ask for timings.
   - `dead-code.md`: running and configuring Knip.
 - `evals/`: trigger and quality tests for the skill. See [evals/README.md](evals/README.md).
-- `install.sh`: the installer. It copies the whole skill directory.
+- `install.sh`: the installer. It copies the whole skill directory into each agent folder it installs to.
 
 ## License
 
