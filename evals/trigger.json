@@ -1,0 +1,17 @@
+[
+  { "id": "audit-service", "should_trigger": true, "prompt": "Audit this Node service for performance problems.", "note": "The plain request the skill exists for." },
+  { "id": "slow-endpoint", "should_trigger": true, "prompt": "Our /orders endpoint got slower as the table grew. Find what in src/ is causing it.", "note": "Describes a symptom and never says \"performance\"." },
+  { "id": "memory-growth", "should_trigger": true, "prompt": "Memory in the queue worker climbs until it gets OOM-killed. Review the code for leaks and unbounded caches.", "note": "Memory and caching, not speed." },
+  { "id": "dead-code", "should_trigger": true, "prompt": "Find the dead code and unused exports in packages/core so we can delete them.", "note": "The dead-code half of the skill, with no performance wording." },
+  { "id": "spread-in-reduce", "should_trigger": true, "prompt": "This reducer rebuilds the object with spread on every iteration. Look for more places like it in the TypeScript code and fix them.", "note": "Names one rule and asks for a sweep." },
+  { "id": "should-i-memoize", "should_trigger": true, "prompt": "Should I memoize getExchangeRate? It is called for every order in the loop.", "note": "A caching decision, which the skill requires confirming with the user." },
+  { "id": "hot-path-pr", "should_trigger": true, "prompt": "Review this TypeScript PR for unnecessary allocations and slow loops in the request path.", "note": "A review scoped to performance." },
+  { "id": "react-rerenders", "should_trigger": false, "prompt": "My React list re-renders on every keystroke. Where should I add useMemo and React.memo?", "note": "React rendering. The skill has no React rules." },
+  { "id": "security-review", "should_trigger": false, "prompt": "Do a security review of this Express app before we launch.", "note": "A review of a JS codebase, for a different concern." },
+  { "id": "plain-refactor", "should_trigger": false, "prompt": "Refactor this module from callbacks to async/await.", "note": "A refactor with no performance goal. The description lists \"refactoring\" as a trigger, so this case shows whether that wording is too broad." },
+  { "id": "generic-pr-review", "should_trigger": false, "prompt": "Review this TypeScript pull request.", "note": "A review with no performance ask. Same risk as plain-refactor, through the word \"reviewing\"." },
+  { "id": "sql-tuning", "should_trigger": false, "prompt": "This Postgres query is slow. Help me read the EXPLAIN ANALYZE output.", "note": "Performance, but of a query plan rather than JS code." },
+  { "id": "slow-typecheck", "should_trigger": false, "prompt": "tsc takes 90 seconds on this repo. Make type-checking faster.", "note": "Build performance, which the skill leaves out." },
+  { "id": "web-vitals", "should_trigger": false, "prompt": "Lighthouse reports a 4 second LCP. Optimize the page's images and fonts.", "note": "Browser loading performance, which the skill leaves out." },
+  { "id": "python-script", "should_trigger": false, "prompt": "Why is my Python data-cleaning script so slow?", "note": "Performance in another language." }
+]
