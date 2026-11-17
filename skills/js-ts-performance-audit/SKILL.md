@@ -5,7 +5,7 @@ description: Audit existing JavaScript and TypeScript projects for runtime perfo
 
 # JS/TS Performance Audit
 
-Audit existing JavaScript and TypeScript projects to identify and fix runtime bottlenecks, unnecessary memory allocations, unbounded caching, and dead code that is bundled or loaded at runtime. Report only changes that make the code faster, use less memory, or ship less code. Cost comes before speed: a change that finishes sooner by doing more work on any path (an extra request, query, or computation) is not a finding.
+Audit existing JavaScript and TypeScript projects to identify and fix runtime bottlenecks, unnecessary memory allocations, unbounded caching, and dead code that is bundled or loaded at runtime. Report only changes that make the code faster, use less memory, or ship less code. Each audit has one goal, speed or cost, chosen in step 1 of the workflow.
 
 ## When to Use
 
@@ -27,24 +27,31 @@ Read each file only when its condition holds.
 
 ## Audit Workflow
 
-1. **Scope the codebase and hot paths**
+1. **Set the goal: speed or cost**
+   - If the request already names the goal, use it.
+   - If a person started the audit and can answer in this session, ask one question before reading any code: "Optimize for speed or for cost?" Wait for the answer.
+   - If nobody can answer (the audit runs as a subagent, in CI, or in any other non-interactive session), detect it per package or file: `speed` for front-end code, which runs in a browser (components, DOM or browser APIs, a browser bundle target), and `cost` for everything else (servers, serverless handlers, jobs, CLIs, libraries).
+   - `speed`: the gain is latency the user feels. A change may do more work on some path to finish sooner.
+   - `cost`: the gain is work removed. A change that finishes sooner by doing more work on any path (an extra request, query, or computation) is not a finding.
+
+2. **Scope the codebase and hot paths**
    - Identify entry points, request handlers, data transformation pipelines, loops, and shared utilities.
    - Prioritize code executed per request, per frame, or over large collections before touching cold startup code.
 
-2. **Analyze allocations, loops, and data structures**
+3. **Analyze allocations, loops, and data structures**
    - Scan for unnecessary array/object copies, chained array passes, and linear array scans.
 
-3. **Evaluate caching and async execution**
+4. **Evaluate caching and async execution**
    - Look for the same resource, result, or database query being fetched or computed repeatedly with the same inputs. These are memoization candidates to raise with the user, not changes to apply.
    - Check sequential `await` statements that always both run and can run concurrently, and `Promise.all` over inputs of unknown length that needs a concurrency cap.
 
-4. **Audit dead code that is bundled or loaded**
+5. **Audit dead code that is bundled or loaded**
    - Identify orphaned files and unused dependencies that still reach a bundle or are loaded at runtime. When terminal access is available, run Knip as described in `references/dead-code.md`.
 
-5. **Report**
+6. **Report**
    - Present findings in the Output Format below, ranked by impact and risk.
 
-6. **Apply and verify, one change at a time** (only when the user asks for edits)
+7. **Apply and verify, one change at a time** (only when the user asks for edits)
    - Apply the findings in report order, one at a time.
    - Verify behaviour: tests, type check, and identical output for the same input. A change that skips validation, serves stale data, drops an `await`, or alters what callers receive is a regression, so revert it.
    - Keep every change that passes and removes work. Do not time a change to decide whether it is worth keeping: a gain too small to see on today's data is still free once the input grows.
@@ -96,10 +103,10 @@ The numbers below were measured on Node 26.13 on one machine. They explain why a
 ### Async and I/O Throughput
 
 - **Parallelize independent `await` calls**: Replace sequential `const a = await fetchA(); const b = await fetchB();` with `const [a, b] = await Promise.all([fetchA(), fetchB()])` when operations do not depend on each other and every path that runs the first also runs the second. Inside a per-item loop, run that item's independent calls in parallel as well.
-- **Do not start a call before the check that can skip it**: When a `throw`, `return`, `break`, or `continue` between two `await`s depends on the first result, the sequential code never pays for the second call on the failing path. `Promise.all` would send it on every path, which raises the bill for requests, queries, and metered APIs to save latency. Leave the code sequential and do not report it.
+- **Under `cost`, do not start a call before the check that can skip it**: When a `throw`, `return`, `break`, or `continue` between two `await`s depends on the first result, the sequential code never pays for the second call on the failing path. `Promise.all` would send it on every path, which raises the bill for requests, queries, and metered APIs to save latency. Leave the code sequential and do not report it. Under `speed`, report it at `Medium` risk when the second call only reads, and say that it now runs on the failing path as well; a call that writes stays sequential under both goals.
 
   ```ts
-  // Leave as is: getB() is never called, or paid for, when `a` is missing.
+  // Under `cost`, leave as is: getB() is never called, or paid for, when `a` is missing.
   const a = await getA();
   if (!a) throw new NotFoundError();
 
@@ -118,7 +125,7 @@ The numbers below were measured on Node 26.13 on one machine. They explain why a
 
 ## Output Format
 
-Keep the report short: no introduction, no summary paragraph, no restating of the rules.
+Keep the report short: no introduction, no summary paragraph, no restating of the rules. Start with one line: `Goal: <speed|cost> (<asked|stated in the request|detected: front end|detected: not front end>)`.
 
 1. **Findings**: one table, sorted by impact (`High` first) and, within the same impact, by risk (`None` first). The top row is the biggest gain for the least risk.
 
