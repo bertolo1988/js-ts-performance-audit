@@ -214,20 +214,6 @@ const rates = new LRUCache<string, number>({
 const rate = (await rates.fetch(order.currency))!;
 ```
 
-### What it leaves alone
-
-Some common advice measured no better, or worse. The skill does not recommend it as a speedup.
-
-| Common advice                                                     | What the skill does                                                                                                                  |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Replace `.forEach()` with `for...of` for speed                    | Does not flag it. The two measured about the same.                                                                                   |
-| Replace `JSON.parse(JSON.stringify(x))` with `structuredClone()`  | Does not suggest the swap. It measured slower on plain data, and it changes what callers receive (`Date`, `Map`, `undefined`).      |
-| Replace `filter().map()` with `flatMap()`                         | Does not flag it. `flatMap()` measured slower.                                                                                       |
-| Cache API-key verification or permission checks                   | Never caches data that must be fresh.                                                                                                |
-| Micro-optimize cold code or small arrays                          | Leaves it alone, so the code stays readable.                                                                                         |
-
-Anything it did not run is labeled `static suspicion`, never stated as a measured speedup.
-
 ### What a report looks like
 
 Findings are grouped into `High`, `Medium`, and `Low`, and each one carries its evidence. This excerpt is illustrative:
