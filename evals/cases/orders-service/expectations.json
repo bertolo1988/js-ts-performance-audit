@@ -43,6 +43,20 @@
   ],
   "banned_claims": [
     {
+      "id": "parallel-across-guard",
+      "why": "listOrders returns 401 before the orders query, so starting that query alongside the account lookup adds a query to every rejected request",
+      "line_all": [
+        "findByKeyId|account",
+        "orders\\.findMany|orders query|order query"
+      ],
+      "line_any": [
+        "Promise\\.all|parallel|concurrent"
+      ],
+      "line_none": [
+        "do not|don't|\\bnot\\b|leave|sequential|guard|401|skip"
+      ]
+    },
+    {
       "id": "cold-path-flagged",
       "why": "loadConfig runs once at startup, so its readFileSync, forEach and spread are not findings",
       "line_all": [

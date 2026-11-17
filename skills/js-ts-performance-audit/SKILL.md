@@ -5,7 +5,7 @@ description: Audit existing JavaScript and TypeScript projects for runtime perfo
 
 # JS/TS Performance Audit
 
-Audit existing JavaScript and TypeScript projects to identify and fix runtime bottlenecks, unnecessary memory allocations, unbounded caching, and dead code that is bundled or loaded at runtime. Report only changes that make the code faster, use less memory, or ship less code.
+Audit existing JavaScript and TypeScript projects to identify and fix runtime bottlenecks, unnecessary memory allocations, unbounded caching, and dead code that is bundled or loaded at runtime. Report only changes that make the code faster, use less memory, or ship less code. Cost comes before speed: a change that finishes sooner by doing more work on any path (an extra request, query, or computation) is not a finding.
 
 ## When to Use
 
@@ -36,7 +36,7 @@ Read each file only when its condition holds.
 
 3. **Evaluate caching and async execution**
    - Look for the same resource, result, or database query being fetched or computed repeatedly with the same inputs. These are memoization candidates to raise with the user, not changes to apply.
-   - Check sequential `await` statements that can run concurrently, and `Promise.all` over inputs of unknown length that needs a concurrency cap.
+   - Check sequential `await` statements that always both run and can run concurrently, and `Promise.all` over inputs of unknown length that needs a concurrency cap.
 
 4. **Audit dead code that is bundled or loaded**
    - Identify orphaned files and unused dependencies that still reach a bundle or are loaded at runtime. When terminal access is available, run Knip as described in `references/dead-code.md`.
@@ -95,7 +95,16 @@ The numbers below were measured on Node 26.13 on one machine. They explain why a
 
 ### Async and I/O Throughput
 
-- **Parallelize independent `await` calls**: Replace sequential `const a = await fetchA(); const b = await fetchB();` with `const [a, b] = await Promise.all([fetchA(), fetchB()])` when operations do not depend on each other. Inside a per-item loop, run that item's independent calls in parallel as well.
+- **Parallelize independent `await` calls**: Replace sequential `const a = await fetchA(); const b = await fetchB();` with `const [a, b] = await Promise.all([fetchA(), fetchB()])` when operations do not depend on each other and every path that runs the first also runs the second. Inside a per-item loop, run that item's independent calls in parallel as well.
+- **Do not start a call before the check that can skip it**: When a `throw`, `return`, `break`, or `continue` between two `await`s depends on the first result, the sequential code never pays for the second call on the failing path. `Promise.all` would send it on every path, which raises the bill for requests, queries, and metered APIs to save latency. Leave the code sequential and do not report it.
+
+  ```ts
+  // Leave as is: getB() is never called, or paid for, when `a` is missing.
+  const a = await getA();
+  if (!a) throw new NotFoundError();
+
+  const b = await getB();
+  ```
 - **Bound concurrency over inputs of unknown length**: `Promise.all(items.map(fn))` starts every call at once. With thousands of items it exhausts memory, sockets, file descriptors, or the database pool. Cap it with `p-map` (`{ concurrency: n }`) or `p-limit` when the project already depends on one. Otherwise process fixed-size chunks, or ask before adding the dependency.
 - **Do not `await` values that are never promises in hot loops**: Each `await` yields to the microtask queue. Awaiting a plain value 10,000 times measured about 90 times slower than the same loop without it. Leave `return await` inside a `try` block alone, and do not remove `async` from a function other modules call: both change error handling.
 - **Stream large payloads**: Avoid buffering multi-megabyte files or responses in memory with `readFile` or `.json()`. Process chunks incrementally with streams or `for await (const chunk of stream)`.

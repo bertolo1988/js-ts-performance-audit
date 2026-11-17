@@ -63,5 +63,6 @@ The grader uses regular expressions only, so it is deterministic and it is appro
 | --- | --- |
 | `readFileSync`, `forEach`, and a spread in `loadConfig` | It runs once at startup, over three items. |
 | `JSON.parse(JSON.stringify(order))` in `snapshot` | Replacing it with `structuredClone()` is not a speedup. |
+| The account lookup and the orders query in `listOrders`, as calls to run in parallel | The 401 check sits between them, so `Promise.all` adds a query to every rejected request. |
 | `forEach` in `countItems` | It measures about the same as `for...of`. |
 | The account lookup and `verifyApiKey` result, as things to cache | They are permission data, which must be read live. |
