@@ -21,8 +21,8 @@ Read each file only when its condition holds.
 | File | Read it when |
 | --- | --- |
 | `references/node-services.md` | The code handles requests or jobs in Node (HTTP server, queue worker, serverless handler). |
-| `references/hot-path-rules.md` | A profile or benchmark shows one specific function is hot. |
-| `references/verifying.md` | You can run code and are about to measure, profile, or benchmark. |
+| `references/hot-path-rules.md` | Code runs per item, per request, or inside a loop. |
+| `references/verifying.md` | The user asks for timings or a profile, or nothing in the code shows where time goes. |
 | `references/dead-code.md` | You are about to run Knip to find dead code. |
 
 ## Audit Workflow
@@ -42,33 +42,30 @@ Read each file only when its condition holds.
    - Identify orphaned files and unused dependencies that still reach a bundle or are loaded at runtime. When terminal access is available, run Knip as described in `references/dead-code.md`.
 
 5. **Report**
-   - Present findings in the Output Format below, each with its tier and evidence label.
+   - Present findings in the Output Format below, ranked by impact and risk.
 
 6. **Apply and verify, one change at a time** (only when the user asks for edits)
-   - Measure a representative workload before changing code. That number is the baseline. Commands are in `references/verifying.md`.
-   - Apply one change, so its result can be attributed to it.
-   - Check behaviour first (tests, type check, identical output) and timing second.
-   - Keep the change only when the gain exceeds run-to-run noise. Measure the unchanged code twice to see the noise. Revert a neutral or slower result.
-   - A faster result that skips validation, serves stale data, or drops an `await` is a regression, not a win.
-   - Record every attempt, including reverted ones, in the report or pull request description: the idea, baseline, result, and verdict. This stops dead ideas being retried.
-   - When code cannot be run, apply only changes that reduce algorithmic complexity and label them `static suspicion`.
+   - Apply the findings in report order, one at a time.
+   - Verify behaviour: tests, type check, and identical output for the same input. A change that skips validation, serves stale data, drops an `await`, or alters what callers receive is a regression, so revert it.
+   - Keep every change that passes and removes work. Do not time a change to decide whether it is worth keeping: a gain too small to see on today's data is still free once the input grows.
+   - Benchmark only when the user asks for numbers. Commands are in `references/verifying.md`.
 
 ## Optimization Rules
 
-The numbers below were measured on Node 26.13 on one machine. They show direction and rough size; re-measure on the project's own workload before relying on one.
+The numbers below were measured on Node 26.13 on one machine. They explain why a rule exists. A finding does not need its own measurement to be reported.
 
 ### Memory and Allocation Efficiency
 
 - **Avoid unnecessary spread operators (`...`)**: Spreading arrays or objects inside loops or `.reduce()` (`[...acc, item]` or `{ ...acc, [k]: v }`) allocates a full copy on every step, turning O(n) work into O(n^2) time and memory. Mutate local structures created inside the function scope instead.
-- **Collapse chained array pipelines in hot paths**: Chaining `.filter().map().filter()` allocates an intermediate array at every stage. Combine multi-step transformations over large datasets into a single `for...of` loop. `flatMap()` is not a fix: it measured slower than `filter().map()`.
+- **Collapse chained array pipelines**: Chaining `.filter().map().filter()` allocates an intermediate array at every stage. When the array's size comes from data, combine the steps into a single `for...of` loop. `flatMap()` is not a fix: it measured slower than `filter().map()`.
 - **Avoid deep copies**: The deep copy is the cost, whichever API makes it. `structuredClone()` measured slower than `JSON.parse(JSON.stringify(x))` on plain data, and both block the event loop. Copy only the branches that change, with spread or `Object.assign`, and only when nothing mutates the branches the copy shares with the original. Never swap one deep-copy API for another: `structuredClone()` keeps `Date`, `Map`, `Set`, and `undefined` values that a JSON round-trip converts or drops, so the swap changes what callers receive.
-- **Avoid `delete obj.prop` on hot objects**: Deleting a property moves the object out of V8's fast hidden-class shape into slow dictionary mode. Omit the property when the object is built instead. Setting it to `undefined` is not equivalent: `Object.keys` and `in` still see it, so it changes what callers receive. This rule is unmeasured, so report it as a `static suspicion`.
-- **Do not recommend object pooling or reuse without a measurement**: V8 allocates and collects short-lived objects of one shape cheaply, so a pool often costs more than it saves.
+- **Avoid `delete obj.prop` on hot objects**: Deleting a property moves the object out of V8's fast hidden-class shape into slow dictionary mode. Omit the property when the object is built instead. Setting it to `undefined` is not equivalent: `Object.keys` and `in` still see it, so it changes what callers receive.
+- **Do not recommend object pooling or reuse**: V8 allocates and collects short-lived objects of one shape cheaply, so a pool often costs more than it saves, and shared mutable objects add risk.
 
 ### Loops and Data Structures
 
 - **Do not flag `.forEach()` for speed**: With an inline callback it measured about the same as `for...of`. A callback only costs more when it escapes (stored, registered, or compared by identity).
-- **Use `Map` and `Set` for auxiliary lookups**: Replace `array.includes()`, `array.indexOf()`, or `array.find()` inside loops with `Set.has()` or `Map.get()` to turn O(n * m) lookups into O(1) average operations.
+- **Use `Map` and `Set` for auxiliary lookups**: Replace `array.includes()`, `array.indexOf()`, `array.find()`, or `array.some()` inside a loop or callback with `Set.has()` or `Map.get()`, turning O(n * m) work into O(n + m). Flag it whenever the array's size comes from data, however small it is today: at 20 items with the match found after about 10 checks, each lookup saves 9 comparisons at no risk. Skip only array literals with a handful of fixed items.
 - **Deduplicate with `Set`**: Replace `arr.filter((v, i) => arr.indexOf(v) === i)` (O(n^2)) with `[...new Set(arr)]` (O(n)).
 - **Find a minimum or maximum in one pass**: Sorting a copy to read its first or last element is O(n log n) and measured 270 times slower than a single loop over 100,000 numbers. `Math.max(...arr)` throws `RangeError` on large arrays, so use a loop there too.
 - **Binary-search arrays that are already sorted**: `findIndex()` and `indexOf()` scan linearly. Use a binary search only when the code guarantees the sort order.
@@ -112,31 +109,36 @@ The numbers below were measured on Node 26.13 on one machine. They show directio
 
 ## Output Format
 
-Structure audit reports using the following sections:
+Keep the report short: no introduction, no summary paragraph, no restating of the rules.
 
-1. **Summary**: High-level overview of findings grouped by category and estimated impact.
-2. **Findings**: Ordered by impact. Place each finding in exactly one tier:
-   - `High`: the cost grows with input size or repeats per request or per item on a hot path (O(n^2) work, a query per item, a blocked event loop, unbounded memory or concurrency).
-   - `Medium`: a constant-factor cost on a hot path.
-   - `Low`: a cold-path cost, such as startup time or bundle size.
+1. **Findings**: one table, sorted by impact (`High` first) and, within the same impact, by risk (`None` first). The top row is the biggest gain for the least risk.
 
-   Dead code goes in section 3, not here.
+   | # | Impact | Risk | Where | Problem → fix |
+   | --- | --- | --- | --- | --- |
+   | 1 | High | None | `src/orders.ts:57` | `includes()` per order, O(n * m) → `Set`, O(n + m) |
 
-   For each finding include:
-   - File path and line range
-   - Rule violated and why it impacts speed, memory, or bundle size
-   - **Evidence**: `measured` with the numbers and the command that produced them, or `static suspicion` when nothing was run
-   - **Needs confirmation**, when the finding depends on something the code does not show, such as data size, call frequency, or dynamic usage
-   - Concrete before and after code snippet
-3. **Dead Code**: Candidate unreferenced files, unused dependencies, and dead branches that ship, noting any dynamic entry points that require manual confirmation.
-4. **Memoization Candidates (confirmation required)**: For each candidate, what is accessed repeatedly, the proposed key, the `max` entry limit, the `ttl`, and how entries are invalidated. End the section by asking the user which candidates to apply.
-5. **Coverage**: The hot paths that were examined and found fine, and the parts of the codebase that were not examined.
+   Under the table, one `### <#>. <title>` block per row, in the same order: at most two sentences (what the cost is and, for `Medium` risk, the open question), then a before and after snippet cut down to the lines that change. Leave the snippet out when the table row already shows the fix.
+
+   **Impact**, by what the change removes:
+   - `High`: work that grows with input size or repeats per request or item on a hot path: O(n^2) work, a query per item, a blocked event loop, unbounded memory or concurrency.
+   - `Medium`: a constant cost repeated per item, call, or request: an allocation, a rebuilt `RegExp` or `Intl` object, an extra array pass.
+   - `Low`: a cost paid once: startup time or bundle size.
+
+   **Risk**, of the change altering behaviour:
+   - `None`: same output for every input, and the change stays inside one function.
+   - `Low`: same output, resting on a condition the code shows and a reviewer should check (sorted input, a map that never stores `undefined`), or the order of side effects changes (parallel `await`s).
+   - `Medium`: depends on something the code does not show, such as data size, dynamic usage, or a downstream limit. Name what needs confirming.
+
+   Describe each gain as the work removed (O(n * m) → O(n + m), one allocation fewer per item, N + 1 queries → 2), never as time.
+2. **Dead code**: one line per unreferenced file or unused dependency that ships, with what to check before removing it (dynamic imports, entry points).
+3. **Memoization candidates (confirmation required)**: a table of what is accessed repeatedly, the key, `max`, `ttl`, and invalidation, followed by one line asking which to apply.
+4. **Coverage**: one line listing what was examined and found fine, one line listing what was not examined.
 
 ## Gotchas
 
 - **Report only performance gains**: Every finding must make the code faster, use less memory, or ship less code. Never report style, readability, type-safety, naming, or API-hygiene changes, unused exports, types, or locals, or any change to what callers receive.
-- **Do not sacrifice clarity on cold paths**: Skip micro-optimizations in one-off setup scripts or tiny fixed-size arrays (fewer than 10 items) where readability matters more than nanoseconds.
-- **Make no unmeasured claims**: State a speedup, a percentage, or "faster" as fact only for something that was measured in this audit. Everything else is a `static suspicion` and is worded as one.
-- **Do not flag what the engine already optimizes**: V8 can inline non-escaping callbacks and identity wrappers, hoist loop-invariant conditions, and remove branches guarded by a constant. Rewriting them needs profiler or benchmark evidence first.
+- **Do not dismiss a free win as too small**: A change that removes work at `None` or `Low` risk is reported, whatever its gain on today's data. Skip only code that runs once (startup, setup scripts) and collections fixed in the source at a handful of items.
+- **Claim no timings that were not measured**: State a speedup, a percentage, or a duration only when it was measured in this audit. Otherwise describe the work removed.
+- **Do not flag what the engine already optimizes**: V8 inlines non-escaping callbacks and identity wrappers, hoists loop-invariant conditions, and removes branches guarded by a constant. Rewriting them removes no work.
 - **Respect public package boundaries**: In libraries or monorepo packages, verify `package.json` `exports` and `main` entry points before flagging a file as unreferenced.
 - **Check memoization side effects**: Never memoize a function whose callers mutate the value it returns, or whose result depends on mutable state outside its arguments.

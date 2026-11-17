@@ -1,26 +1,26 @@
 # Hot-Path Rules
 
-Apply these rules only to a function that a CPU profile or benchmark shows is hot. Elsewhere they cost readability and return nothing measurable.
+Apply these rules to code that runs per item, per request, or inside a loop. No profile is needed: each one removes work, so flag it wherever that code runs, however small the gain looks today. Report each as `Medium` impact with the risk in its row, unless the surrounding loop makes it `High`.
 
-The ratios were measured on Node 26.13 on one machine. They show which direction is faster and roughly by how much. V8 changes between versions, so re-measure on the project's own workload before keeping a change.
+The ratios were measured on Node 26.13 on one machine. They show which direction is faster and roughly by how much; do not re-measure them to decide whether to report a finding.
 
 ## Rules that measured faster
 
-| Flag this in a hot function | Replace with | Measured |
-| --- | --- | --- |
-| Throwing and catching for an expected outcome, such as "not found" or "invalid input" | Return a sentinel value or a result object | 446 times faster at a 50% miss rate |
-| `try { fs.statSync(path) } catch {}` to test for a missing file | `fs.statSync(path, { throwIfNoEntry: false })` | 4.8 times faster |
-| Reading properties through a `Proxy` | A plain object, or unwrap the target once before the loop | 89 times faster |
-| A generator whose caller consumes every value | Build and return an array | 3.6 times faster |
-| One function reading the same property from objects of many shapes (eight in the test) | Create those objects with the same properties in the same order | 2.7 times faster |
-| An array that mixes value types, such as numbers and strings | Keep the array to one type | 3.2 times faster |
-| A regular expression tested against one character at a time | Compare `charCodeAt(i)` against a range | 6.7 times faster |
-| `line.split(sep)[0]` to read one field | `line.slice(0, line.indexOf(sep))` | 7.4 times faster |
-| Building a substring one character at a time with `+=` | Track the start and end, then call `substring()` once | 300 times faster |
-| A regular expression run on lines that mostly do not match | Test `line.includes(literal)` first and skip the miss | 1.4 times faster at a 5% match rate |
-| A string built inside a callback from values that do not change per item | Build it once before the loop | 1.25 times faster |
-| `map.has(key)` followed by `map.get(key)` | One `map.get(key)`, then test the result | 1.24 times faster |
-| Comparing two arrays element by element | Compare `length` first and stop when it differs | Skips the whole pass |
+| Flag this | Replace with | Risk | Measured |
+| --- | --- | --- | --- |
+| Throwing and catching for an expected outcome, such as "not found" or "invalid input" | Return a sentinel value or a result object | `Low`, and only when every caller is in the same module | 446 times faster at a 50% miss rate |
+| `try { fs.statSync(path) } catch {}` to test for a missing file | `fs.statSync(path, { throwIfNoEntry: false })` | `None` | 4.8 times faster |
+| Reading properties through a `Proxy` | A plain object, or unwrap the target once before the loop | `Low`: check the traps have no side effects | 89 times faster |
+| A generator whose caller consumes every value | Build and return an array | `Low` | 3.6 times faster |
+| One function reading the same property from objects of many shapes (eight in the test) | Create those objects with the same properties in the same order | `Low` | 2.7 times faster |
+| An array that mixes value types, such as numbers and strings | Keep the array to one type | `Low` | 3.2 times faster |
+| A regular expression tested against one character at a time | Compare `charCodeAt(i)` against a range | `None` | 6.7 times faster |
+| `line.split(sep)[0]` to read one field | `line.slice(0, line.indexOf(sep))`, keeping the whole line when `indexOf` returns `-1` | `Low` | 7.4 times faster |
+| Building a substring one character at a time with `+=` | Track the start and end, then call `substring()` once | `None` | 300 times faster |
+| A regular expression run on lines that mostly do not match | Test `line.includes(literal)` first and skip the miss | `None` when every match contains the literal | 1.4 times faster at a 5% match rate |
+| A string built inside a callback from values that do not change per item | Build it once before the loop | `None` | 1.25 times faster |
+| `map.has(key)` followed by `map.get(key)` | One `map.get(key)`, then test the result | `Low` | 1.24 times faster |
+| Comparing two arrays element by element | Compare `length` first and stop when it differs | `None` | Skips the whole pass |
 
 Conditions on three of the rows:
 
