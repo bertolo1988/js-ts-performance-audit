@@ -31,8 +31,9 @@ Each case is a directory under [cases/](cases/):
 To run a case:
 
 1. Copy the case's `src/` into an empty scratch directory outside this repository, so the agent cannot read `expectations.json`.
-2. Run the prompt there three ways: with no skill, with the skill from `main`, and with the skill from your branch. Tell the two skill runs where the skill directory is. Run each at least twice; one sample is not a result.
-3. Grade each report:
+2. If the skill asks whether to optimize for speed or cost, answer `cost`: the fixtures are back-end code, and the banned claims assume that goal.
+3. Run the prompt there three ways: with no skill, with the skill from `main`, and with the skill from your branch. Tell the two skill runs where the skill directory is. Run each at least twice; one sample is not a result.
+4. Grade each report:
 
    ```bash
    node evals/grade.mjs evals/cases/orders-service path/to/report.md
@@ -63,5 +64,6 @@ The grader uses regular expressions only, so it is deterministic and it is appro
 | --- | --- |
 | `readFileSync`, `forEach`, and a spread in `loadConfig` | It runs once at startup, over three items. |
 | `JSON.parse(JSON.stringify(order))` in `snapshot` | Replacing it with `structuredClone()` is not a speedup. |
+| The account lookup and the orders query in `listOrders`, as calls to run in parallel | The 401 check sits between them, so `Promise.all` adds a query to every rejected request. |
 | `forEach` in `countItems` | It measures about the same as `for...of`. |
 | The account lookup and `verifyApiKey` result, as things to cache | They are permission data, which must be read live. |
