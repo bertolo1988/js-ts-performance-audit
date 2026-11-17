@@ -2,6 +2,35 @@
 
 An agent skill that audits existing JavaScript and TypeScript projects for runtime performance, memory allocations, caching, and dead code. Use it when reviewing, optimizing, refactoring, or auditing a JS/TS codebase, repository, or module to reduce allocations, replace O(n^2) scans with `Map`/`Set`, suggest bounded memoization, and remove dead code that is bundled or loaded.
 
+## Install
+
+Installs the skill for Claude Code, Codex, and OpenCode:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bertolo1988/js-ts-performance-audit/main/install.sh | bash
+```
+
+To install for specific tools only, pass them as arguments (`claude`, `codex`, `opencode`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bertolo1988/js-ts-performance-audit/main/install.sh | bash -s -- claude codex
+```
+
+| Tool        | Install location                                   |
+| ----------- | -------------------------------------------------- |
+| Claude Code | `~/.claude/skills/js-ts-performance-audit/`        |
+| Codex       | `~/.codex/skills/js-ts-performance-audit/`         |
+| OpenCode    | `~/.config/opencode/skills/js-ts-performance-audit/` |
+
+Re-run the command at any time to update to the latest version.
+
+### Options
+
+Environment variables read by the installer:
+
+- `SKILL_REF`: Git branch, tag, or commit to install from (default: `main`).
+- `CLAUDE_HOME`, `CODEX_HOME`, `XDG_CONFIG_HOME`: override the base directories above.
+
 ## Examples
 
 Each example shows code the skill flags and the fix it proposes. Most come from the seeded [`orders-service`](evals/cases/orders-service/src/orders.ts) eval fixture. Gains are described by complexity, or by the measurements recorded in the skill's [reference files](skills/js-ts-performance-audit/references/). Re-measure on your own workload before relying on a number.
@@ -73,7 +102,7 @@ const vip = orders.filter((order) => vipIds.has(order.customerId));
 
 ### Blocking the event loop
 
-One synchronous call in a request handler stalls every in-flight request. In the skill's measurement, a single `pbkdf2Sync` with 200,000 iterations blocked the loop for 68 ms. The same call at module scope runs once at startup and is left alone.
+One synchronous call in a request handler stalls every in-flight request. In the skill's measurement, a single `pbkdf2Sync` with 200,000 iterations blocked the loop for 68 ms. The example uses the fixture's 210,000. The same call at module scope runs once at startup and is left alone.
 
 ```ts
 // Before
@@ -141,21 +170,20 @@ function formatPrice(value: number) {
 }
 ```
 
-### Unnecessary exports and dead code
+### Dead code that ships
 
-Needless exports widen a module's public API and hide dead code, because `tsc` never reports an exported symbol as unused. When it can run code, the skill uses [Knip](https://knip.dev) to find unused exports and files, and `tsc --noUnusedLocals` for unused locals. Everything they report is a candidate: dynamic imports and framework entry points are listed for manual confirmation before anything is deleted.
+Unreferenced files and unused dependencies still reach the bundle or load at startup. When it can run code, the skill uses [Knip](https://knip.dev) to find them. Unused exports, types, and locals have no runtime cost, so it leaves them out. Everything Knip reports is a candidate: dynamic imports, framework entry points, and tests are checked before anything is deleted.
 
 ```diff
-- export const TAX_RATE = 0.23;
-+ const TAX_RATE = 0.23;
-
-  export function applyTax(amount: number) {
-    return amount * (1 + TAX_RATE);
+  // package.json
+  "dependencies": {
+-   "moment": "^2.30.1",
+    "express": "^5.1.0"
   }
+```
 
-- export function legacyDiscount(amount: number) {
--   return amount * 0.9;
-- }
+```diff
+- src/legacy/discounts.ts   (imported by nothing, not a package entry point)
 ```
 
 ### Caching: a question, not an edit
@@ -192,8 +220,8 @@ Some common advice measured no better, or worse. The skill does not recommend it
 
 | Common advice                                                     | What the skill does                                                                                                                  |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Replace `.forEach()` with `for...of` for speed                    | Does not flag it, because the two measured about the same. It suggests `for...of` when the loop needs `break`, `continue`, early `return`, or sequential `await`. |
-| Replace `JSON.parse(JSON.stringify(x))` with `structuredClone()`  | Recommends `structuredClone()` only for correctness, such as `Date` or `Map` values. It measured slower on plain data.              |
+| Replace `.forEach()` with `for...of` for speed                    | Does not flag it. The two measured about the same.                                                                                   |
+| Replace `JSON.parse(JSON.stringify(x))` with `structuredClone()`  | Does not suggest the swap. It measured slower on plain data, and it changes what callers receive (`Date`, `Map`, `undefined`).      |
 | Replace `filter().map()` with `flatMap()`                         | Does not flag it. `flatMap()` measured slower.                                                                                       |
 | Cache API-key verification or permission checks                   | Never caches data that must be fresh.                                                                                                |
 | Micro-optimize cold code or small arrays                          | Leaves it alone, so the code stays readable.                                                                                         |
@@ -222,37 +250,8 @@ number of orders and repeats on every request. Batch it with `WHERE orderId IN (
 ## Coverage
 
 Examined: `listOrders`, `totalsByCustomer`, `vipOrders`, `exportOrders`.
-Not examined: `src/db.ts`, `src/rates.ts`.
+Not examined: `db` and `fetchRate`, which are imported but not in `src/`.
 ```
-
-## Install
-
-Installs the skill for Claude Code, Codex, and OpenCode:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/bertolo1988/js-ts-performance-audit/main/install.sh | bash
-```
-
-To install for specific tools only, pass them as arguments (`claude`, `codex`, `opencode`):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/bertolo1988/js-ts-performance-audit/main/install.sh | bash -s -- claude codex
-```
-
-| Tool        | Install location                                   |
-| ----------- | -------------------------------------------------- |
-| Claude Code | `~/.claude/skills/js-ts-performance-audit/`        |
-| Codex       | `~/.codex/skills/js-ts-performance-audit/`         |
-| OpenCode    | `~/.config/opencode/skills/js-ts-performance-audit/` |
-
-Re-run the command at any time to update to the latest version.
-
-### Options
-
-Environment variables read by the installer:
-
-- `SKILL_REF`: Git branch, tag, or commit to install from (default: `main`).
-- `CLAUDE_HOME`, `CODEX_HOME`, `XDG_CONFIG_HOME`: override the base directories above.
 
 ## Repository layout
 
@@ -261,7 +260,7 @@ Environment variables read by the installer:
   - `node-services.md`: event-loop blocking and data-access checks for Node servers and workers.
   - `hot-path-rules.md`: micro-rules for functions a profile shows are hot, each with its measured gain.
   - `verifying.md`: how to measure a change, and the profiling commands to use.
-  - `dead-code.md`: running and configuring Knip and `tsc`.
+  - `dead-code.md`: running and configuring Knip.
 - `evals/`: trigger and quality tests for the skill. See [evals/README.md](evals/README.md).
 - `install.sh`: the installer. It copies the whole skill directory.
 
