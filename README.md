@@ -1,6 +1,6 @@
 # js-ts-performance-audit
 
-An agent skill that audits existing JavaScript and TypeScript projects for runtime performance, memory allocations, caching, and dead code. Use it when reviewing, optimizing, refactoring, or auditing a JS/TS codebase, repository, or module to reduce allocations, replace O(n^2) scans with `Map`/`Set`, add bounded memoization, prune unnecessary exports, and remove dead code.
+An agent skill that audits existing JavaScript and TypeScript projects for runtime performance, memory allocations, caching, and dead code. Use it when reviewing, optimizing, refactoring, or auditing a JS/TS codebase, repository, or module to reduce allocations, replace O(n^2) scans with `Map`/`Set`, suggest bounded memoization, prune unnecessary exports, and remove dead code.
 
 > **Status:** work in progress. The skill's instructions are not written yet; `SKILL.md` currently contains only its metadata.
 

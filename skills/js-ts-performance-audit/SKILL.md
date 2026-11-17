@@ -1,6 +1,6 @@
 ---
 name: js-ts-performance-audit
-description: Audit existing JavaScript and TypeScript projects for runtime performance, memory allocations, caching, and dead code. Use when reviewing, optimizing, refactoring, or auditing a JS/TS codebase, repository, or module to reduce allocations, replace O(n^2) scans with Map/Set, add bounded memoization, prune unnecessary exports, and remove dead code.
+description: Audit existing JavaScript and TypeScript projects for runtime performance, memory allocations, caching, and dead code. Use when reviewing, optimizing, refactoring, or auditing a JS/TS codebase, repository, or module to reduce allocations, replace O(n^2) scans with Map/Set, suggest bounded memoization, prune unnecessary exports, and remove dead code.
 ---
 
 # JS/TS Performance Audit
@@ -12,7 +12,7 @@ Audit existing JavaScript and TypeScript projects to identify and fix runtime bo
 - Auditing an existing JS/TS repository, service, or module for performance and memory improvements.
 - Reviewing pull requests or hot paths for unnecessary copies, slow loops, or algorithmic complexity.
 - Cleaning up unused exports, dead branches, and obsolete files in mature projects.
-- Introducing safe, bounded in-memory memoization for repeated computations or async lookups.
+- Finding repeated access to the same resource, result, or database query that could be cached with the user's approval.
 
 ## Audit Workflow
 
@@ -24,7 +24,7 @@ Audit existing JavaScript and TypeScript projects to identify and fix runtime bo
    - Scan for unnecessary array/object copies, chained array passes, callback-heavy iterations, and linear array scans.
 
 3. **Evaluate caching and async execution**
-   - Check repeated pure computations or duplicate async fetches that benefit from bounded memoization.
+   - Look for the same resource, result, or database query being fetched or computed repeatedly with the same inputs. These are memoization candidates to raise with the user, not changes to apply.
    - Check sequential `await` statements that can run concurrently.
 
 4. **Audit module boundaries and dead code**
@@ -53,9 +53,22 @@ Audit existing JavaScript and TypeScript projects to identify and fix runtime bo
 
 ### Caching and Memoization
 
-- **Memoize repeated expensive work with strict bounds**: Use `memoize` (sync) or `p-memoize` (async) from npm, or an LRU cache, when the same inputs repeat frequently.
-- **Enforce a maximum entry limit**: Always configure `maxSize` (or equivalent cache size cap) and a `maxAge` / TTL when data can go stale. Never introduce an unbounded cache in a long-running process.
-- **Verify cache key cardinality**: Do not memoize functions whose arguments are unique per request (such as request objects, timestamps, or random IDs), as cache misses add overhead without hits.
+- **Suggest memoization only for frequent access to the same thing**: A cache is a candidate only where the code reads the same resource, recomputes the same result, or runs the same database query many times with the same inputs. Arguments that are unique per call (request objects, timestamps, random IDs) never hit, so those functions are not candidates.
+- **Confirm with the user before adding a cache**: Memoization is a suggestion, never an edit applied with the other fixes. Tell the user what would be cached, the key, the entry limit, and how stale a value may get, then ask whether they want it. Adding the `lru-cache` dependency is part of what they approve.
+- **Use `lru-cache`**: Once approved, build the cache with `lru-cache` from npm. Always set `max` (entry limit), add `ttl` when the data can go stale, and use `maxSize` with `sizeCalculation` when values vary widely in size. Build the key from every input that changes the result. For async lookups, pass `fetchMethod` and call `cache.fetch(key)` so concurrent calls for one key share a single request. Never use an unbounded `Map` or object as a cache in a long-running process.
+
+  ```ts
+  import { LRUCache } from 'lru-cache';
+
+  const users = new LRUCache<string, User>({
+    max: 500,
+    ttl: 60_000,
+    fetchMethod: (id) => db.users.findById(id),
+  });
+
+  const user = await users.fetch(id);
+  ```
+
 - **Hoist `RegExp` and `Intl.*` instances**: Move `new RegExp(...)`, `new Intl.DateTimeFormat(...)`, and `new Intl.NumberFormat(...)` out of functions and loops to module scope so patterns and locale tables are compiled once.
 
 ### Async and I/O Throughput
@@ -81,6 +94,7 @@ Structure audit reports using the following sections:
    - Rule violated and why it impacts speed, memory, or bundle size
    - Concrete before and after code snippet
 3. **Dead Code and Unused Exports**: List of candidate unused exports, variables, and files, noting any dynamic entry points that require manual confirmation.
+4. **Memoization Candidates (confirmation required)**: For each candidate, what is accessed repeatedly, the proposed key, the `max` entry limit, and the `ttl`. End the section by asking the user which candidates to apply.
 
 ## Gotchas
 
