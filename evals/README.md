@@ -57,7 +57,7 @@ The grader uses regular expressions only, so it is deterministic and it is appro
 | Spread of the accumulator inside `reduce` | `totalsByCustomer` |
 | `includes()` inside `filter()` | `vipOrders` |
 | `Promise.all` over a request-supplied list with no cap | `exportOrders` |
-| The same exchange rate fetched for every order (a memoization candidate) | `listOrders` |
+| The same exchange rate fetched for every order (a memoization candidate, graded under `format`) | `listOrders` |
 
 | Decoy | Why it is not a finding |
 | --- | --- |

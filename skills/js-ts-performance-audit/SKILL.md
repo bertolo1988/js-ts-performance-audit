@@ -55,21 +55,23 @@ Read each file only when its condition holds.
 
 ## Optimization Rules
 
+The numbers below were measured on Node 26.13 on one machine. They show direction and rough size; re-measure on the project's own workload before relying on one.
+
 ### Memory and Allocation Efficiency
 
 - **Avoid unnecessary spread operators (`...`)**: Spreading arrays or objects inside loops or `.reduce()` (`[...acc, item]` or `{ ...acc, [k]: v }`) allocates a full copy on every step, turning O(n) work into O(n^2) time and memory. Mutate local structures created inside the function scope instead.
 - **Collapse chained array pipelines in hot paths**: Chaining `.filter().map().filter()` allocates an intermediate array at every stage. Combine multi-step transformations over large datasets into a single `for...of` loop. `flatMap()` is not a fix: it measured slower than `filter().map()`.
-- **Avoid deep copies**: The deep copy is the cost, whichever API makes it. `structuredClone()` measured slower than `JSON.parse(JSON.stringify(x))` on plain data, and both block the event loop. Copy only the branches that change, with spread or `Object.assign`. Never swap one deep-copy API for another: `structuredClone()` keeps `Date`, `Map`, `Set`, and `undefined` values that a JSON round-trip converts or drops, so the swap changes what callers receive.
-- **Avoid `delete obj.prop` on frequently accessed objects**: Deleting properties forces V8 to transition objects out of fast hidden-class shapes into slow dictionary mode. Set properties to `undefined` or omit them during object construction.
+- **Avoid deep copies**: The deep copy is the cost, whichever API makes it. `structuredClone()` measured slower than `JSON.parse(JSON.stringify(x))` on plain data, and both block the event loop. Copy only the branches that change, with spread or `Object.assign`, and only when nothing mutates the branches the copy shares with the original. Never swap one deep-copy API for another: `structuredClone()` keeps `Date`, `Map`, `Set`, and `undefined` values that a JSON round-trip converts or drops, so the swap changes what callers receive.
+- **Avoid `delete obj.prop` on hot objects**: Deleting a property moves the object out of V8's fast hidden-class shape into slow dictionary mode. Omit the property when the object is built instead. Setting it to `undefined` is not equivalent: `Object.keys` and `in` still see it, so it changes what callers receive. This rule is unmeasured, so report it as a `static suspicion`.
 - **Do not recommend object pooling or reuse without a measurement**: V8 allocates and collects short-lived objects of one shape cheaply, so a pool often costs more than it saves.
 
 ### Loops and Data Structures
 
-- **Use `for...of` when the loop needs `break`, `continue`, early `return`, or sequential `await`**: `.forEach()` supports none of them. Do not flag `.forEach()` for speed: with an inline callback it measured about the same as `for...of`. A callback only costs more when it escapes (stored, registered, or compared by identity).
+- **Do not flag `.forEach()` for speed**: With an inline callback it measured about the same as `for...of`. A callback only costs more when it escapes (stored, registered, or compared by identity).
 - **Use `Map` and `Set` for auxiliary lookups**: Replace `array.includes()`, `array.indexOf()`, or `array.find()` inside loops with `Set.has()` or `Map.get()` to turn O(n * m) lookups into O(1) average operations.
 - **Deduplicate with `Set`**: Replace `arr.filter((v, i) => arr.indexOf(v) === i)` (O(n^2)) with `[...new Set(arr)]` (O(n)).
 - **Find a minimum or maximum in one pass**: Sorting a copy to read its first or last element is O(n log n) and measured 270 times slower than a single loop over 100,000 numbers. `Math.max(...arr)` throws `RangeError` on large arrays, so use a loop there too.
-- **Binary-search arrays that are already sorted**: `findIndex()` and `indexOf()` scan the whole array. Use a binary search only when the code guarantees the sort order.
+- **Binary-search arrays that are already sorted**: `findIndex()` and `indexOf()` scan linearly. Use a binary search only when the code guarantees the sort order.
 
 ### Caching and Memoization
 
@@ -105,7 +107,7 @@ Read each file only when its condition holds.
 ### Bundle Size and Load Time
 
 - **Remove dead code that ships**: Unreferenced files, unused dependencies, and branches behind obsolete feature flags add to the bundle or to startup. Check dynamic imports, framework entry points, and test files before deleting anything.
-- **Avoid bloated barrel files (`index.ts`)**: Re-exporting entire directories via `export * from './...'` forces bundlers and TypeScript to load and type-check unused modules. Import directly from concrete module paths.
+- **Avoid bloated barrel files (`index.ts`)**: Re-exporting entire directories via `export * from './...'` makes Node and test runners load every module at startup, and stops bundlers tree-shaking unused modules when the package does not declare `"sideEffects": false`. Import directly from concrete module paths.
 - **Lazy-load heavy modules that most runs never use**: In CLIs, serverless handlers, and browser bundles, load a rarely used module with `await import('./report.js')` inside the branch that needs it, and load feature modules only when the feature is enabled. Write the path as a string literal so bundlers can resolve and split it; a computed path defeats that. Do not lazy-load on the request path of a long-running server: that moves the cost from startup to a user's first request.
 
 ## Output Format
@@ -117,6 +119,8 @@ Structure audit reports using the following sections:
    - `High`: the cost grows with input size or repeats per request or per item on a hot path (O(n^2) work, a query per item, a blocked event loop, unbounded memory or concurrency).
    - `Medium`: a constant-factor cost on a hot path.
    - `Low`: a cold-path cost, such as startup time or bundle size.
+
+   Dead code goes in section 3, not here.
 
    For each finding include:
    - File path and line range
@@ -135,4 +139,4 @@ Structure audit reports using the following sections:
 - **Make no unmeasured claims**: State a speedup, a percentage, or "faster" as fact only for something that was measured in this audit. Everything else is a `static suspicion` and is worded as one.
 - **Do not flag what the engine already optimizes**: V8 can inline non-escaping callbacks and identity wrappers, hoist loop-invariant conditions, and remove branches guarded by a constant. Rewriting them needs profiler or benchmark evidence first.
 - **Respect public package boundaries**: In libraries or monorepo packages, verify `package.json` `exports` and `main` entry points before flagging a file as unreferenced.
-- **Check memoization side effects**: Never memoize functions that mutate their return values or rely on ambient mutable state unless callers treat results as immutable.
+- **Check memoization side effects**: Never memoize a function whose callers mutate the value it returns, or whose result depends on mutable state outside its arguments.

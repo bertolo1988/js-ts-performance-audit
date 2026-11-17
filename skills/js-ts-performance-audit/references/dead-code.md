@@ -1,6 +1,6 @@
 # Finding Dead Code with Knip
 
-Read this file before running Knip. Report only unused files and dependencies: they are bundled or loaded. Unused exports, types, and locals have no runtime cost, so leave them out of the report. Everything Knip reports is a candidate, not a verdict: confirm each one against dynamic imports, framework entry points, and tests before removing it.
+Read this file before running Knip. Report only unused files and dependencies, because they are bundled or loaded. Unused exports, types, and locals have no runtime cost, so leave them out of the report. Everything Knip reports is a candidate, not a verdict: confirm each one against dynamic imports, framework entry points, and tests before removing it.
 
 ## Running the tools
 
