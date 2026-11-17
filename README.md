@@ -31,6 +31,32 @@ Environment variables read by the installer:
 - `SKILL_REF`: Git branch, tag, or commit to install from (default: `main`).
 - `CLAUDE_HOME`, `CODEX_HOME`, `XDG_CONFIG_HOME`: override the base directories above.
 
+## Speed or cost
+
+Every audit has one goal, and the goal decides which changes count as findings:
+
+- **Speed**: the gain is latency the user feels. A change may do more work on some path if it finishes sooner.
+- **Cost**: the gain is work removed. A change that finishes sooner by doing more work on any path (an extra request, query, or computation) is not a finding.
+
+The skill picks the goal before reading any code:
+
+1. If your request names it ("audit this for cost"), it uses that.
+2. Otherwise, in an interactive session, it asks one question: "Optimize for speed or for cost?"
+3. When nobody can answer (a subagent, CI, or another non-interactive run), it detects the goal per package or file: `speed` for front-end code that runs in a browser, `cost` for everything else (servers, serverless handlers, jobs, CLIs, libraries).
+
+The report's first line states the goal and how it was chosen, for example `Goal: cost (detected: not front end)`.
+
+Where the goals differ: two `await`s separated by a check that can exit early.
+
+```ts
+const a = await getA();
+if (!a) throw new NotFoundError();
+
+const b = await getB();
+```
+
+Under `cost`, the skill leaves this sequential: `getB()` is never called, or paid for, when `a` is missing, and `Promise.all` would send it on every path. Under `speed`, it reports the parallel version at `Medium` risk when `getB()` only reads, and says that it now runs on the failing path too. A call that writes stays sequential under both goals.
+
 ## Examples
 
 Each example shows code the skill flags and the fix it proposes. Most come from the seeded [`orders-service`](evals/cases/orders-service/src/orders.ts) eval fixture. Gains are described by the work they remove, not by timings: a change that removes work at no risk is reported however small the gain looks on today's data.
