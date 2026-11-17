@@ -2,6 +2,229 @@
 
 An agent skill that audits existing JavaScript and TypeScript projects for runtime performance, memory allocations, caching, and dead code. Use it when reviewing, optimizing, refactoring, or auditing a JS/TS codebase, repository, or module to reduce allocations, replace O(n^2) scans with `Map`/`Set`, suggest bounded memoization, prune unnecessary exports, and remove dead code.
 
+## Examples
+
+Each example shows code the skill flags and the fix it proposes. Most come from the seeded [`orders-service`](evals/cases/orders-service/src/orders.ts) eval fixture. Gains are described by complexity, or by the measurements recorded in the skill's [reference files](skills/js-ts-performance-audit/references/). Re-measure on your own workload before relying on a number.
+
+### Query per item (N+1)
+
+A database call inside a loop runs once per item, and a `Promise.all` around it still sends one call per item. The skill replaces it with one batched query. It reports this as `High`.
+
+```ts
+// Before: 1 + N queries
+const orders = await db.orders.findMany({ where: { customerId } });
+for (const order of orders) {
+  order.items = await db.items.findMany({ where: { orderId: order.id } });
+}
+```
+
+```ts
+// After: 2 queries
+const orders = await db.orders.findMany({ where: { customerId } });
+const items = await db.items.findMany({
+  where: { orderId: { in: orders.map((order) => order.id) } },
+});
+
+const itemsByOrder = new Map<string, Item[]>();
+for (const item of items) {
+  const list = itemsByOrder.get(item.orderId);
+  if (list) list.push(item);
+  else itemsByOrder.set(item.orderId, [item]);
+}
+for (const order of orders) {
+  order.items = itemsByOrder.get(order.id) ?? [];
+}
+```
+
+### Spread inside `reduce`
+
+`{ ...acc }` copies every key collected so far on every step, so the work grows as O(n^2). The skill mutates a local accumulator instead.
+
+```ts
+// Before
+const totals = orders.reduce(
+  (acc, order) => ({ ...acc, [order.customerId]: (acc[order.customerId] ?? 0) + order.total }),
+  {} as Record<string, number>,
+);
+```
+
+```ts
+// After
+const totals: Record<string, number> = {};
+for (const order of orders) {
+  totals[order.customerId] = (totals[order.customerId] ?? 0) + order.total;
+}
+```
+
+### Linear lookup inside a loop
+
+`includes()` scans the whole array for every order: O(n * m). A `Set` makes each lookup O(1) on average.
+
+```ts
+// Before
+const vip = orders.filter((order) => vipCustomerIds.includes(order.customerId));
+```
+
+```ts
+// After
+const vipIds = new Set(vipCustomerIds);
+const vip = orders.filter((order) => vipIds.has(order.customerId));
+```
+
+### Blocking the event loop
+
+One synchronous call in a request handler stalls every in-flight request. In the skill's measurement, a single `pbkdf2Sync` with 200,000 iterations blocked the loop for 68 ms. The same call at module scope runs once at startup and is left alone.
+
+```ts
+// Before
+const hash = pbkdf2Sync(key, salt, 210_000, 32, 'sha256');
+```
+
+```ts
+// After
+import { pbkdf2 } from 'node:crypto';
+import { promisify } from 'node:util';
+
+const pbkdf2Async = promisify(pbkdf2);
+
+const hash = await pbkdf2Async(key, salt, 210_000, 32, 'sha256');
+```
+
+### Unbounded concurrency
+
+`Promise.all(ids.map(...))` starts every call at once. With thousands of ids it can exhaust memory, sockets, or a database pool. The skill caps the concurrency with `p-map` or `p-limit` when the project already uses one. Otherwise it processes fixed-size chunks, or asks before adding a dependency.
+
+```ts
+// Before: one request per id, all at once
+return Promise.all(orderIds.map((id) => fetchOrder(id)));
+```
+
+```ts
+// After: at most 10 in flight
+import pMap from 'p-map';
+
+return pMap(orderIds, (id) => fetchOrder(id), { concurrency: 10 });
+```
+
+### Deep copies
+
+The deep copy is the cost, whichever API makes it. The skill copies only the branches that change.
+
+```ts
+// Before
+const next = JSON.parse(JSON.stringify(state));
+next.settings.theme = 'dark';
+```
+
+```ts
+// After
+const next = { ...state, settings: { ...state.settings, theme: 'dark' } };
+```
+
+### Work rebuilt on every call
+
+A `new Intl.NumberFormat(...)` or `new RegExp(...)` inside a function is rebuilt on every call. The skill hoists it to module scope so it is built once. It does the same for reads of files that never change, such as templates.
+
+```ts
+// Before
+function formatPrice(value: number) {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+}
+```
+
+```ts
+// After
+const priceFormat = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+
+function formatPrice(value: number) {
+  return priceFormat.format(value);
+}
+```
+
+### Unnecessary exports and dead code
+
+Needless exports widen a module's public API and hide dead code, because `tsc` never reports an exported symbol as unused. When it can run code, the skill uses [Knip](https://knip.dev) to find unused exports and files, and `tsc --noUnusedLocals` for unused locals. Everything they report is a candidate: dynamic imports and framework entry points are listed for manual confirmation before anything is deleted.
+
+```diff
+- export const TAX_RATE = 0.23;
++ const TAX_RATE = 0.23;
+
+  export function applyTax(amount: number) {
+    return amount * (1 + TAX_RATE);
+  }
+
+- export function legacyDiscount(amount: number) {
+-   return amount * 0.9;
+- }
+```
+
+### Caching: a question, not an edit
+
+The skill never adds a cache on its own. Here `listOrders` fetches an exchange rate once per order, usually for a handful of currencies. The report raises it as a candidate and asks:
+
+```md
+### Memoization Candidates (confirmation required)
+
+| What                             | Key        | max | ttl   | Invalidation                                         |
+| -------------------------------- | ---------- | --- | ----- | ---------------------------------------------------- |
+| `fetchRate` call in `listOrders` | `currency` | 50  | 5 min | Expires by ttl. A rate can be up to 5 minutes stale. |
+
+Which candidates should I apply?
+```
+
+Only after you approve does it add a bounded `lru-cache`. Concurrent calls for the same key share one request:
+
+```ts
+import { LRUCache } from 'lru-cache';
+
+const rates = new LRUCache<string, number>({
+  max: 50,
+  ttl: 5 * 60_000,
+  fetchMethod: (currency) => fetchRate(currency, 'USD'),
+});
+
+const rate = (await rates.fetch(order.currency))!;
+```
+
+### What it leaves alone
+
+Some common advice measured no better, or worse. The skill does not recommend it as a speedup.
+
+| Common advice                                                     | What the skill does                                                                                                                  |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Replace `.forEach()` with `for...of` for speed                    | Does not flag it, because the two measured about the same. It suggests `for...of` when the loop needs `break`, `continue`, early `return`, or sequential `await`. |
+| Replace `JSON.parse(JSON.stringify(x))` with `structuredClone()`  | Recommends `structuredClone()` only for correctness, such as `Date` or `Map` values. It measured slower on plain data.              |
+| Replace `filter().map()` with `flatMap()`                         | Does not flag it. `flatMap()` measured slower.                                                                                       |
+| Cache API-key verification or permission checks                   | Never caches data that must be fresh.                                                                                                |
+| Micro-optimize cold code or small arrays                          | Leaves it alone, so the code stays readable.                                                                                         |
+
+Anything it did not run is labeled `static suspicion`, never stated as a measured speedup.
+
+### What a report looks like
+
+Findings are grouped into `High`, `Medium`, and `Low`, and each one carries its evidence. This excerpt is illustrative:
+
+```md
+## Findings
+
+### High: one query per order (N+1)
+
+`src/orders.ts:35-37`
+
+`listOrders` runs `db.items.findMany` once per order. The cost grows with the
+number of orders and repeats on every request. Batch it with `WHERE orderId IN (...)`.
+
+- **Evidence:** `static suspicion` (nothing was run)
+- **Needs confirmation:** typical number of orders per customer
+
+(before and after snippets)
+
+## Coverage
+
+Examined: `listOrders`, `totalsByCustomer`, `vipOrders`, `exportOrders`.
+Not examined: `src/db.ts`, `src/rates.ts`.
+```
+
 ## Install
 
 Installs the skill for Claude Code, Codex, and OpenCode:
